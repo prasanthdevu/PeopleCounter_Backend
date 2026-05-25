@@ -34,7 +34,7 @@ namespace PeopleCounter_Backend.Services
                     IsOnline = reader.GetBoolean(4),
                     LastSeen = reader.IsDBNull(5) ? null : reader.GetDateTime(5),
                     Status   = reader.IsDBNull(6) ? SensorStatus.Offline
-                               : Enum.Parse<SensorStatus>(reader.GetString(6))
+                               : Enum.TryParse<SensorStatus>(reader.GetString(6), ignoreCase: true, out var s1) ? s1 : SensorStatus.Offline
                 });
             }
 
@@ -85,7 +85,7 @@ namespace PeopleCounter_Backend.Services
                 IsOnline = r.GetBoolean(4),
                 LastSeen = r.IsDBNull(5) ? null : r.GetDateTime(5),
                 Status = r.IsDBNull(6) ? SensorStatus.Offline
-                         : Enum.Parse<SensorStatus>(r.GetString(6))
+                         : Enum.TryParse<SensorStatus>(r.GetString(6), ignoreCase: true, out var s2) ? s2 : SensorStatus.Offline
             };
         }
         public async Task InsertIfNotExistsAsync(string device, string location, string ipAddress)

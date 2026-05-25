@@ -32,7 +32,7 @@ namespace PeopleCounter_Backend.Controllers
         [HttpGet("buildings")]
         public async Task<IActionResult> GetBuildings()
         {
-            var data = await _repository.GetBuildingSummary();
+            var data = await _repository.GetBuildingSummaryRaw();
             return Ok(data);
         }
 
@@ -40,7 +40,7 @@ namespace PeopleCounter_Backend.Controllers
         [HttpGet("building/{building}")]
         public async Task<IActionResult> GetBuildingDevices(string building)
         {
-            var data = await _repository.GetSensorsByBuilding(building);
+            var data = await _repository.GetSensorsByBuildingRaw(building);
             return Ok(data);
         }
 

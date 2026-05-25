@@ -60,6 +60,8 @@ builder.Services.AddSignalR()
     });
 
 builder.Services.Configure<MqttOptions>(builder.Configuration.GetSection("Mqtt"));
+builder.Services.Configure<SensorApiOptions>(builder.Configuration.GetSection("SensorApi"));
+builder.Services.AddScoped<SensorApiService>();
 builder.Services.AddSingleton<SensorCacheService>();
 builder.Services.AddSingleton<MqttMessageProcessor>();
 builder.Services.AddSingleton<MqttService>();

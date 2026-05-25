@@ -14,12 +14,18 @@ namespace PeopleCounter_Backend.Controllers
         private readonly PeopleCounterRepository _repository;
         private readonly IHubContext<PeopleCounterHub> _hub;
         private readonly SensorCacheService _sensorCache;
+        private readonly SensorApiService _sensorApi;
 
-        public DeviceController(PeopleCounterRepository repository, IHubContext<PeopleCounterHub> hub, SensorCacheService sensorCache)
+        public DeviceController(
+            PeopleCounterRepository repository,
+            IHubContext<PeopleCounterHub> hub,
+            SensorCacheService sensorCache,
+            SensorApiService sensorApi)
         {
             _repository = repository;
             _hub = hub;
             _sensorCache = sensorCache;
+            _sensorApi = sensorApi;
         }
 
         [Authorize(Roles = "Admin")]
@@ -31,11 +37,15 @@ namespace PeopleCounter_Backend.Controllers
                 var building = await _repository.GetBuildingByDevice(deviceId);
                 await _repository.ResetDevice(deviceId);
 
+                bool hardwareReset = false;
+                if (_sensorCache.TryGetSensor(deviceId, out var sensor) && sensor != null)
+                    hardwareReset = await _sensorApi.ResetDetectResultAsync(deviceId, sensor.IpAddress);
+
                 await _hub.Clients.Group($"building:{building}").SendAsync("DeviceReset", deviceId);
-                var updatedSummaries = await _repository.GetBuildingSummary();
+                var updatedSummaries = await _repository.GetBuildingSummaryRaw();
                 await _hub.Clients.Group("dashboard").SendAsync("BuildingSummaryUpdated", updatedSummaries);
 
-                return Ok(new { message = "Device reset successful", deviceId });
+                return Ok(new { message = "Device reset successful", deviceId, hardwareReset });
             }
             catch (InvalidOperationException)
             {
@@ -49,11 +59,30 @@ namespace PeopleCounter_Backend.Controllers
         {
             await _repository.ResetAllDevicesInBuilding(building);
 
+            var sensors = _sensorCache.GetAll()
+                .Where(s => s.Location == building)
+                .ToList();
+
+            var hardwareResults = await Task.WhenAll(
+                sensors.Select(s => _sensorApi.ResetDetectResultAsync(s.Device, s.IpAddress)));
+
+            var sensorResults = sensors
+                .Zip(hardwareResults, (s, ok) => new { s.Device, hardwareReset = ok })
+                .ToList();
+
             await _hub.Clients.Group($"building:{building}").SendAsync("BuildingReset", building);
-            var updatedSummaries = await _repository.GetBuildingSummary();
+            var updatedSummaries = await _repository.GetBuildingSummaryRaw();
             await _hub.Clients.Group("dashboard").SendAsync("BuildingSummaryUpdated", updatedSummaries);
 
-            return Ok(new { message = "Building reset successful", building });
+            return Ok(new { message = "Building reset successful", building, sensors = sensorResults });
+        }
+
+
+        [HttpGet("resets")]
+        public async Task<IActionResult> GetResets()
+        {
+            var data = await _repository.GetResetsAsync();
+            return Ok(data);
         }
 
 
@@ -97,7 +126,7 @@ namespace PeopleCounter_Backend.Controllers
                     break;
             }
 
-            var data = await _repository.GetSensorTrendAsync(deviceId, adjustedFrom, adjustedTo, bucket);
+            var data = await _repository.GetSensorTrendRawAsync(deviceId, adjustedFrom, adjustedTo, bucket);
             return Ok(data);
         }
 
@@ -141,7 +170,7 @@ namespace PeopleCounter_Backend.Controllers
                     break;
             }
 
-            var data = await _repository.GetLocationTrendAsync(location, adjustedFrom, adjustedTo, bucket);
+            var data = await _repository.GetLocationTrendRawAsync(location, adjustedFrom, adjustedTo, bucket);
             return Ok(data);
         }
 

@@ -282,49 +282,32 @@ namespace PeopleCounter_Backend.Services
                 var repo = scope.ServiceProvider.GetRequiredService<PeopleCounterRepository>();
 
                 var insertStopwatch = System.Diagnostics.Stopwatch.StartNew();
-                await repo.InsertDataAsync(newRecords);
+                var signalRStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                await Task.WhenAll(
+                    repo.InsertDataAsync(newRecords),
+                    SendSignalRUpdates(newRecords, repo)
+                );
+
                 insertStopwatch.Stop();
+                signalRStopwatch.Stop();
 
                 _logger.LogDebug(
                     "Bulk insert: {Ms}ms for {Count} records",
                     insertStopwatch.ElapsedMilliseconds,
                     newRecords.Count);
 
-                var deviceIds = newRecords.Select(r => r.DeviceId).Distinct().ToList();
-
-                var queryStopwatch = System.Diagnostics.Stopwatch.StartNew();
-                var devices = await repo.GetLatestLogicalDeviceByIdsAysnc(deviceIds);
-                queryStopwatch.Stop();
-
-                _logger.LogDebug(
-                    "Batch query: {Ms}ms for {Count} devices",
-                    queryStopwatch.ElapsedMilliseconds,
-                    deviceIds.Count);
-
-                if (devices == null || devices.Count == 0)
-                {
-                    _logger.LogWarning("No devices returned from batch query");
-                    return;
-                }
-
-                var signalRStopwatch = System.Diagnostics.Stopwatch.StartNew();
-                await SendSignalRUpdates(devices, repo);
-                signalRStopwatch.Stop();
-
                 _logger.LogDebug("SignalR updates: {Ms}ms", signalRStopwatch.ElapsedMilliseconds);
 
                 totalStopwatch.Stop();
 
                 _logger.LogDebug(
-                    "Batch summary: {MessageCount} msgs → {RecordCount} records ({Skipped} skipped) → " +
-                    "{DeviceCount} devices | Insert: {InsertMs}ms, Query: {QueryMs}ms, " +
-                    "SignalR: {SignalRMs}ms, Total: {TotalMs}ms",
+                    "Batch summary: {MessageCount} msgs → {RecordCount} records ({Skipped} skipped) | " +
+                    "Insert: {InsertMs}ms, SignalR: {SignalRMs}ms, Total: {TotalMs}ms",
                     messages.Count,
                     newRecords.Count,
                     skipped,
-                    deviceIds.Count,
                     insertStopwatch.ElapsedMilliseconds,
-                    queryStopwatch.ElapsedMilliseconds,
                     signalRStopwatch.ElapsedMilliseconds,
                     totalStopwatch.ElapsedMilliseconds);
             }
@@ -362,7 +345,7 @@ namespace PeopleCounter_Backend.Services
         {
             try
             {
-                var summaries = await repo.GetBuildingSummary();
+                var summaries = await repo.GetBuildingSummaryRaw();
                 await _hubContext.Clients.Group("dashboard").SendAsync("BuildingSummaryUpdated", summaries);
                 _logger.LogDebug("Sent building summary for {Count} buildings.", summaries.Count);
             }
